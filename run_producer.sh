@@ -5,8 +5,8 @@ export LOG_FORMAT=
 
 export DEBUGLEVEL=1
 
-#export TESTSIZE=6     # 2
-export TESTSIZE=100     # 10
+export TESTSIZE=6     # 2
+#export TESTSIZE=10     # 10
 #export TESTSIZE=1000     # 1 thou
 #export TESTSIZE=10000     # 10 thou
 #export TESTSIZE=100000     # 100 thou

@@ -33,8 +33,13 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	glog "google.golang.org/grpc/grpclog"
+
+	// My Types/Structs
+	"cmd/seed"
+	"cmd/types"
 )
 
+// Private Structs
 type TPgeneral struct {
 	hostname   string
 	debuglevel int
@@ -56,133 +61,6 @@ type TPkafka struct {
 	sasl_username     string
 	sasl_password     string
 	flush_interval    int
-}
-
-type TPaddress struct {
-	Streetname string  `json:streetname`
-	City       string  `json:city`
-	State      string  `json:state`
-	Zip        string  `json:zip`
-	Country    string  `json:country`
-	Latitude   float64 `json:latitude`
-	Longitude  float64 `json:longitude`
-}
-
-type TPccard struct {
-	Type   string `json:"type"`
-	Number int    `json:"number"`
-	Exp    string `json:"exp"`
-	Cvv    string `json:"cvv"`
-}
-
-type TPjobinfo struct {
-	Company    string `json:"company"`
-	Title      string `json:"title"`
-	Descriptor string `json:"descriptor"`
-	Level      string `json:"level"`
-}
-
-type TPcontact struct {
-	Email string `json:"email"`
-	Phone string `json:"phone"`
-}
-
-// My fake data structures
-type TPperson struct {
-	Ssn          string    `json:"ssn"`
-	Firstname    string    `json:"firstname"`
-	Lastname     string    `json:"lastname"`
-	Gender       string    `json:"gender"`
-	Address      TPaddress `json:"address"`
-	Contact      TPcontact `json:"contact"`
-	Ccard        TPccard   `json:"ccard"`
-	Job          TPjobinfo `json:"job"`
-	Created_date string    `json:"created_date"`
-}
-
-type TPamount struct {
-	BaseCurrency string `json:"basecurrency"`
-	BaseValue    string `json:"basevalue"`
-	Burrency     string `json:"currency"`
-	Value        string `json:"value"`
-}
-
-type TPtags struct {
-	Tag    string   `json:"tag"`
-	Values []string `json:"values"`
-}
-
-type TPmodelData struct {
-	Adata string `json:"adata"`
-}
-
-type TPmodels struct {
-	ModelId    string      `json:"modelid"`
-	Score      float64     `json:"score"`
-	Confidence float64     `json:"confidence"`
-	Tags       []TPtags    `json:"tags"`
-	ModelData  TPmodelData `json:"modeldata"`
-}
-
-type TPrules struct {
-	RuleId string  `json:rul"e"id`
-	Score  float64 `json:"score"`
-}
-
-type TPscore struct {
-	Models []TPmodels `json:"models"`
-	Tags   []TPtags   `json:"tags"`
-	Rules  []TPrules  `json:"rules"`
-}
-
-type TPaggregator struct {
-	AggregatorId   string   `json:"aggregatorid"`
-	Scores         TPscore  `json:"scores"`
-	AggregateScore string   `json:"aggregatescore"`
-	MatchedBound   string   `json:"matchedbound"`
-	OutputTags     []TPtags `json:"outputtags,omitempty"`
-	SuppressedTags []TPtags `json:"suppressedtags,omitempty"`
-	Alert          string   `json:"alert"`
-	SuppressAlert  string   `json:"suppressalert"`
-}
-
-type TPconfigGroups struct {
-	Type           string         `json:"type"`
-	Version        string         `json:"version"`
-	Id             string         `json:"id"`
-	TriggeredRules []string       `json:"triggeredRules,omitempty"`
-	Aggregators    []TPaggregator `json:"aggregators, omitempty"`
-}
-
-type TPversions struct {
-	ModelGraph   int              `json:"modelgraph"`
-	ConfigGroups []TPconfigGroups `json:"configgroups"`
-}
-
-type TPoverallScore struct {
-	AggregationModel string  `json:"aggregationModel"`
-	OverallScore     float64 `json:"overallscore"`
-}
-
-type TPentity struct {
-	TenantId     string           `json:"tenantid"`
-	EntityType   string           `json:"entitytype"`
-	EntityId     string           `json:"entityid"`
-	OverallScore TPoverallScore   `json:"overallscore"`
-	Models       []TPmodels       `json:"models"`
-	FailedModels []string         `json:"failedmodels"`
-	OutputTags   []TPtags         `json:"tags"`
-	RiskStatus   string           `json:"riskstatus"`
-	ConfigGroups []TPconfigGroups `json:"configgroups"`
-}
-
-type TPengineResponse struct {
-	Entities         []TPentity             `json:"entities"`
-	JsonVersion      int                    `json:"jsonversion"`
-	OriginatingEvent map[string]interface{} `json:"originatingevent"`
-	OutputTime       string                 `json:"outputtime"`
-	ProcessorId      string                 `json:"processorid"`
-	Versions         TPversions             `json:"versions"`
 }
 
 var (
@@ -222,51 +100,6 @@ func init() {
 	fmt.Println("")
 	fmt.Println("*")
 
-}
-
-func getBanks() map[int]string {
-
-	ar := make(map[int]string)
-
-	ar[1] = "Standard Bank"
-	ar[2] = "ABSA"
-	ar[3] = "Nedbank"
-	ar[4] = "Capitect Bank Limited"
-	ar[5] = "Bank Zero"
-	ar[6] = "Thyme Bank"
-	ar[7] = "FirstRand Limited"
-	ar[8] = "Discovery Bank Limited"
-	ar[9] = "African Bank Limited"
-	ar[10] = "Bidvest"
-	ar[11] = "Grindrod"
-	ar[12] = "Investec"
-	ar[13] = "Ithala"
-	ar[14] = "Sasfin Bank Limited"
-	ar[15] = "Ubank"
-
-	return ar
-}
-
-func getTransType() map[int]string {
-
-	ar := make(map[int]string)
-
-	ar[1] = "EFT"
-	ar[2] = "AC Collection"
-	ar[3] = "Payshap"
-	ar[4] = "RTC"
-
-	return ar
-}
-
-func getDirection() map[int]string {
-
-	ar := make(map[int]string)
-
-	ar[1] = "Inbound"
-	ar[2] = "Outbound"
-
-	return ar
 }
 
 func CreateTopic(props TPkafka) {
@@ -576,13 +409,14 @@ func main() {
 			gofakeit.Seed(time.Now().UnixNano())
 			gofakeit.Seed(0)
 
+			// We just using gofakeit to pad the json document size a bit.
 			g_address := gofakeit.Address()
 			g_ccard := gofakeit.CreditCard()
 			g_job := gofakeit.Job()
 			g_contact := gofakeit.Contact()
 			g_person := gofakeit.Person()
 
-			address := &TPaddress{
+			address := &types.TPaddress{
 				Streetname: g_address.Street,
 				City:       g_address.City,
 				State:      g_address.State,
@@ -592,26 +426,26 @@ func main() {
 				Longitude:  g_address.Longitude,
 			}
 
-			ccard := &TPccard{
+			ccard := &types.TPccard{
 				Type:   g_ccard.Type,
 				Number: g_ccard.Number,
 				Exp:    g_ccard.Exp,
 				Cvv:    g_ccard.Cvv,
 			}
 
-			job := &TPjobinfo{
+			job := &types.TPjobinfo{
 				Company:    g_job.Company,
 				Title:      g_job.Title,
 				Descriptor: g_job.Descriptor,
 				Level:      g_job.Level,
 			}
 
-			contact := &TPcontact{
+			contact := &types.TPcontact{
 				Email: g_contact.Email,
 				Phone: g_contact.Phone,
 			}
 
-			tperson := &TPperson{
+			tperson := &types.TPperson{
 				Ssn:          g_person.SSN,
 				Firstname:    g_person.FirstName,
 				Lastname:     g_person.LastName,
@@ -623,21 +457,24 @@ func main() {
 				Created_date: time.Now().Format("2006-01-02T15:04:05"),
 			}
 
-			cBank := getBanks()[gofakeit.Number(1, 15)]
-			cTransType := getTransType()[gofakeit.Number(1, 4)]
-			cDirection := getDirection()[gofakeit.Number(1, 2)]
+			cBank := seed.GetBanks()[gofakeit.Number(1, 15)] // tenants
+			cTransType := seed.GetTransType()[gofakeit.Number(1, 4)]
+			cDirection := seed.GetDirection()[gofakeit.Number(1, 2)]
 			nAmount := fmt.Sprintf("%9.2f", gofakeit.Price(0, 999999999))
+			cMerchant := seed.GetEntityId()[gofakeit.Number(1, 26)]
+
+			t_amount := &types.TPamount{
+				BaseCurrency: "zar",
+				BaseValue:    nAmount,
+				Burrency:     "zar",
+				Value:        nAmount,
+			}
 
 			t_PaymentNrt := map[string]interface{}{
-				"accountAgentId":  strconv.Itoa(rand.Intn(6)),
-				"accountEntityId": strconv.Itoa(rand.Intn(6)),
-				"accountId":       strconv.Itoa(gofakeit.CreditCardNumber()),
-				"amount": map[string]interface{}{
-					"baseCurrency": "zar",
-					"baseValue":    nAmount,
-					"currency":     "zar",
-					"value":        nAmount,
-				},
+				"accountAgentId":               strconv.Itoa(rand.Intn(6)),
+				"accountEntityId":              strconv.Itoa(rand.Intn(6)),
+				"accountId":                    strconv.Itoa(gofakeit.CreditCardNumber()),
+				"amount":                       t_amount,
 				"counterpartyEntityId":         strconv.Itoa(gofakeit.Number(0, 9999)),
 				"counterpartyId":               strconv.Itoa(gofakeit.Number(10000, 19999)),
 				"counterpartyName":             *tperson,
@@ -666,39 +503,198 @@ func main() {
 				"transactionType":              cTransType,
 			}
 
-			er := map[string]interface{}{
-				"JsonVersion":      4,
-				"OriginatingEvent": t_PaymentNrt,
-				"OutputTime":       time.Now().Format("2006-01-02T15:04:05"),
-				"ProcessorId":      "proc",
-				"Versions": map[string]interface{}{
-					"ModelGraph": 4,
-					"ConfigGroups": []TPconfigGroups{
-						TPconfigGroups{
-							Type:    "global",
-							Version: "1",
+			// We cheating, going to use this same aggregator in both TPconfigGroups
+			t_aggregators := []types.TPaggregator{
+				types.TPaggregator{
+					AggregatorId:   "agg1",
+					AggregateScore: 0.3,
+					MatchedBound:   0.1,
+					Alert:          true,
+					SuppressAlert:  false,
+					Scores: types.TPscore{
+						Models: []types.TPmodels{
+							types.TPmodels{
+								ModelId: "model1",
+								Score:   0.51,
+							},
+							types.TPmodels{
+								ModelId: "model2",
+								Score:   0.42,
+							},
+							types.TPmodels{
+								ModelId: "aggModel",
+								Score:   0.2,
+							},
 						},
-						TPconfigGroups{
-							Type:    "analytical",
-							Version: "3",
-							Id:      "acg1",
+						Tags: []types.TPtags{
+							types.TPtags{
+								Tag:    "codes",
+								Values: []string{"Dodgy"},
+							},
 						},
-						TPconfigGroups{
-							Type:    "analytical",
-							Version: "2",
-							Id:      "acg2",
+						Rules: []types.TPrules{
+							types.TPrules{
+								RuleId: "rule1",
+								Score:  0.2,
+							},
+							types.TPrules{
+								RuleId: "rule2",
+								Score:  0.4,
+							},
 						},
-						TPconfigGroups{
-							Type:    "tenant",
-							Id:      "tenant10",
-							Version: "0",
+					},
+					OutputTags: []types.TPtags{
+						types.TPtags{
+							Tag:    "codes",
+							Values: []string{"LowValueTrans"},
 						},
+					},
+					SuppressedTags: []types.TPtags{
+						types.TPtags{
+							Tag:    "otherTag",
+							Values: []string{"t3", "t4"},
+						},
+					},
+				},
+
+				types.TPaggregator{
+					AggregatorId:   "agg2",
+					AggregateScore: 0.2,
+					MatchedBound:   0.4,
+					Alert:          true,
+					SuppressAlert:  false,
+				},
+			}
+
+			t_entity := []types.TPentity{
+				types.TPentity{
+					TenantId:   cBank,
+					EntityType: "merchant",
+					EntityId:   cMerchant,
+
+					OverallScore: types.TPoverallScore{
+						AggregationModel: "aggModel",
+						OverallScore:     0.2,
+					},
+
+					Models: []types.TPmodels{
+						types.TPmodels{
+							ModelId:    "model1",
+							Score:      0.5,
+							Confidence: 0.2,
+						},
+						types.TPmodels{
+							ModelId:    "model2",
+							Score:      0.1,
+							Confidence: 0.9,
+							ModelData: types.TPmodelData{
+								Adata: "aData ASet",
+							},
+						},
+						types.TPmodels{
+							ModelId:    "aggModel",
+							Score:      0.2,
+							Confidence: 0.9,
+							ModelData: types.TPmodelData{
+								Adata: "aData BSet",
+							},
+						},
+					},
+
+					FailedModels: []string{"fm1", "fm2"},
+
+					OutputTags: []types.TPtags{
+						types.TPtags{
+							Tag:    "codes",
+							Values: []string{"highValueTransaction", "fraud"},
+						},
+						types.TPtags{
+							Tag:    "otherTag",
+							Values: []string{"t1", "t2"},
+						},
+					},
+
+					RiskStatus: "review",
+
+					ConfigGroups: []types.TPconfigGroups{
+						types.TPconfigGroups{
+							Type:           "global",
+							TriggeredRules: []string{"rule1", "rule2"},
+							Aggregators:    t_aggregators,
+						},
+						types.TPconfigGroups{
+							Type:           "analytical",
+							Id:             "acg1	",
+							TriggeredRules: []string{"rule1", "rule3"},
+							Aggregators:    t_aggregators,
+						},
+						types.TPconfigGroups{
+							Type:           "analytical",
+							Id:             "acg2",
+							TriggeredRules: []string{"rule1", "rule3"},
+						},
+						types.TPconfigGroups{
+							Type:           "tenant",
+							Id:             "tenant10",
+							TriggeredRules: []string{"rule2", "rule3"},
+						},
+					},
+				},
+
+				types.TPentity{
+					EntityType: "consumer",
+					EntityId:   "consumer1",
+				},
+			}
+
+			// In real live we'd define the object and then append the array items... of course !!!!
+			t_versions := types.TPversions{
+				ModelGraph: 4,
+				ConfigGroups: []types.TPconfigGroups{
+					types.TPconfigGroups{
+						Type:    "global",
+						Version: "1",
+					},
+					types.TPconfigGroups{
+						Type:    "analytical",
+						Version: "3",
+						Id:      "acg1",
+					},
+					types.TPconfigGroups{
+						Type:    "analytical",
+						Version: "2",
+						Id:      "acg2",
+					},
+					types.TPconfigGroups{
+						Type:    "tenant",
+						Id:      "tenant10",
+						Version: "0",
 					},
 				},
 			}
 
+			/* engineResponse := map[string]interface{}{
+				"Entities":         t_entity,
+				"JsonVersion":      4,
+				"OriginatingEvent": t_PaymentNrt,
+				"OutputTime":       time.Now().Format("2006-01-02T15:04:05"),
+				"ProcessorId":      "proc",
+				"Versions":         t_versions,
+			} */
+
+			// OR
+
+			t_engineResponse := types.TPengineResponse{
+				Entities:         t_entity,
+				JsonVersion:      4,
+				OriginatingEvent: t_PaymentNrt,
+				OutputTime:       time.Now().Format("2006-01-02T15:04:05"),
+				ProcessorId:      "proc",
+				Versions:         t_versions,
+			}
+
 			// Change/Marshal the person variable int a json object
-			valueBytes, err := json.Marshal(er)
+			valueBytes, err := json.Marshal(t_engineResponse)
 			if err != nil {
 				grpcLog.Errorln("Marchalling error: ", err)
 
