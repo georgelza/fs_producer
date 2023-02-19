@@ -1,5 +1,6 @@
 package types
 
+// My fake data structures - GoFakeIt
 type TPaddress struct {
 	Streetname string  `json:streetname`
 	City       string  `json:city`
@@ -29,7 +30,6 @@ type TPcontact struct {
 	Phone string `json:"phone"`
 }
 
-// My fake data structures
 type TPperson struct {
 	Ssn          string    `json:"ssn"`
 	Firstname    string    `json:"firstname"`
@@ -42,6 +42,7 @@ type TPperson struct {
 	Created_date string    `json:"created_date"`
 }
 
+// FS engineResponse components
 type TPamount struct {
 	BaseCurrency string `json:"basecurrency,omitempty"`
 	BaseValue    string `json:"basevalu,omitempty"`

@@ -34,7 +34,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	glog "google.golang.org/grpc/grpclog"
 
-	// My Types/Structs
+	// My Types/Structs/functions
 	"cmd/seed"
 	"cmd/types"
 )
@@ -266,7 +266,7 @@ func loadKafkaProps() TPkafka {
 	return vKafka
 }
 
-// Pretty Print JSON string
+// Pretty Print JSON interface
 func prettyPrintJSON(v interface{}) {
 	tmpBArray, err := json.MarshalIndent(v, "", "    ")
 	if err == nil {
@@ -279,6 +279,7 @@ func prettyPrintJSON(v interface{}) {
 	}
 }
 
+// Pretty Print JSON string
 func prettyJSON(ms string) {
 
 	var obj map[string]interface{}
@@ -296,8 +297,6 @@ func prettyJSON(ms string) {
 }
 
 func main() {
-
-	//	var person TPperson
 
 	// Initialize the vGeneral struct variable.
 	vGeneral := loadGeneralProps()
@@ -402,14 +401,14 @@ func main() {
 				time.Sleep(time.Duration(n) * time.Millisecond)
 			}
 
-			// Start of fake data generate
+			// We just using gofakeit to pad the json document size a bit.
+			//
 			// https://github.com/brianvoe/gofakeit
 			// https://pkg.go.dev/github.com/brianvoe/gofakeit
 
 			gofakeit.Seed(time.Now().UnixNano())
 			gofakeit.Seed(0)
 
-			// We just using gofakeit to pad the json document size a bit.
 			g_address := gofakeit.Address()
 			g_ccard := gofakeit.CreditCard()
 			g_job := gofakeit.Job()
@@ -457,7 +456,11 @@ func main() {
 				Created_date: time.Now().Format("2006-01-02T15:04:05"),
 			}
 
-			cBank := seed.GetBanks()[gofakeit.Number(1, 15)] // tenants
+			// Lets start building the various bits that comprises the engineResponse JSON Doc
+			// This is the original inbound event, will be 2, 1 for outbound bank and 1 for inbound bank out
+			//
+
+			cTenant := seed.GetTenants()[gofakeit.Number(1, 15)] // tenants
 			cTransType := seed.GetTransType()[gofakeit.Number(1, 4)]
 			cDirection := seed.GetDirection()[gofakeit.Number(1, 2)]
 			nAmount := fmt.Sprintf("%9.2f", gofakeit.Price(0, 999999999))
@@ -470,6 +473,14 @@ func main() {
 				Value:        nAmount,
 			}
 
+			//
+			// This would all be coming from the S3 bucket via a source connector,
+			// so instead of generating the data we would simply read the
+			// JSON document and push it to Kafka topic.
+			//
+
+			// We ust showing 2 ways to construct a JSON document to be Marshalled, this is the first using a map/interface,
+			// followed by using a set of struct objects added together.
 			t_PaymentNrt := map[string]interface{}{
 				"accountAgentId":               strconv.Itoa(rand.Intn(6)),
 				"accountEntityId":              strconv.Itoa(rand.Intn(6)),
@@ -497,7 +508,7 @@ func main() {
 				"settlementClearingSystemCode": "settlementClearingSystemCode_1",
 				"settlementDate":               time.Now().Format("2006-01-02"),
 				"settlementMethod":             "samos",
-				"tenantId":                     []string{cBank},
+				"tenantId":                     []string{cTenant},
 				"toId":                         strconv.Itoa(gofakeit.CreditCardNumber()),
 				"transactionId":                uuid.New().String(),
 				"transactionType":              cTransType,
@@ -568,9 +579,9 @@ func main() {
 
 			t_entity := []types.TPentity{
 				types.TPentity{
-					TenantId:   cBank,
-					EntityType: "merchant",
-					EntityId:   cMerchant,
+					TenantId:   cTenant,    // Tenant = a Bank, our customer
+					EntityType: "merchant", // Entity is either a Merchant or the consumer, for outbound is it the consumer, inbound bank its normally the merchant, except when a reversal is actioned.
+					EntityId:   cMerchant,  // if Merchant we push a seeded Merchant name into here, not sure how the consumer block would look
 
 					OverallScore: types.TPoverallScore{
 						AggregationModel: "aggModel",
@@ -648,6 +659,7 @@ func main() {
 			}
 
 			// In real live we'd define the object and then append the array items... of course !!!!
+			// we're cheating as we're just creating volume to push onto Kafka and onto MongoDB store.
 			t_versions := types.TPversions{
 				ModelGraph: 4,
 				ConfigGroups: []types.TPconfigGroups{
@@ -673,14 +685,15 @@ func main() {
 				},
 			}
 
-			/* engineResponse := map[string]interface{}{
-				"Entities":         t_entity,
-				"JsonVersion":      4,
-				"OriginatingEvent": t_PaymentNrt,
-				"OutputTime":       time.Now().Format("2006-01-02T15:04:05"),
-				"ProcessorId":      "proc",
-				"Versions":         t_versions,
-			} */
+			/*
+				engineResponse := map[string]interface{}{
+					"Entities":         t_entity,
+					"JsonVersion":      4,
+					"OriginatingEvent": t_PaymentNrt,
+					"OutputTime":       time.Now().Format("2006-01-02T15:04:05"),
+					"ProcessorId":      "proc",
+					"Versions":         t_versions,
+				} */
 
 			// OR
 
@@ -709,8 +722,8 @@ func main() {
 					Topic:     &vKafka.topicname,
 					Partition: kafka.PartitionAny,
 				},
-				Value: valueBytes,    // This is the payload/body thats being posted
-				Key:   []byte(cBank), // We us this to group the same transactions together in order, IE submitting/Debtor Bank.
+				Value: valueBytes,      // This is the payload/body thats being posted
+				Key:   []byte(cTenant), // We us this to group the same transactions together in order, .
 			}
 
 			// We will decide if we want to keep this bit!!! or simplify it.

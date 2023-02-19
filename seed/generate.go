@@ -1,6 +1,6 @@
 package seed
 
-func GetBanks() map[int]string {
+func GetTenants() map[int]string {
 
 	ar := make(map[int]string)
 
