@@ -44,7 +44,7 @@ import (
 )
 
 // Private Structs
-type TPgeneral struct {
+type tp_general struct {
 	hostname     string
 	debuglevel   int
 	loglevel     string
@@ -55,7 +55,7 @@ type TPgeneral struct {
 	output_path  string
 }
 
-type TPkafka struct {
+type tp_kafka struct {
 	bootstrapservers  string
 	topicname         string
 	numpartitions     int
@@ -76,8 +76,7 @@ type PaymentPoster struct {
 }
 
 var (
-	grpcLog  glog.LoggerV2
-	vGeneral TPgeneral
+	grpcLog glog.LoggerV2
 )
 
 func init() {
@@ -101,7 +100,7 @@ func init() {
 
 }
 
-func CreateTopic(props TPkafka) {
+func CreateTopic(props tp_kafka) {
 
 	cm := kafka.ConfigMap{
 		"bootstrap.servers":       props.bootstrapservers,
@@ -167,7 +166,7 @@ func CreateTopic(props TPkafka) {
 
 }
 
-func loadGeneralProps() TPgeneral {
+func loadGeneralProps() (vGeneral tp_general) {
 
 	// Lets identify ourself - helpful concept in a container environment.
 	var err interface{}
@@ -233,9 +232,8 @@ func loadGeneralProps() TPgeneral {
 	return vGeneral
 }
 
-func loadKafkaProps() TPkafka {
+func loadKafkaProps() (vKafka tp_kafka) {
 
-	var vKafka TPkafka
 	var err interface{}
 
 	// Broker Configuration
