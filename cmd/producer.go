@@ -1,16 +1,19 @@
 /*
 *
-*	File		: producer.go
+*	File			: producer.go
 *
-* 	Created		: 27 Aug 2021
+* 	Created			: 27 Aug 2021
 *
-*	Description	:
+*	Description		:
 *
-*	Modified	: 27 Aug 2021	- Start
-*				: 24 Jan 2023   - Mod for applab sandbox
+*	Modified		: 27 Aug 2021	- Start
+*					: 24 Jan 2023   - Mod for applab sandbox
+*					: 20 Feb 2023	- repckaged for TFM 2.0 load generation, we're creating fake FS engineResponse messages onto a
+*					:				- Confluent Kafka topic
 *
-*	By			: George Leonard (georgelza@gmail.com)
+*	By				: George Leonard (georgelza@gmail.com)
 *
+*	jsonformatter 	: https://jsonformatter.curiousconcept.com/#
 *
  */
 
@@ -20,6 +23,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"math/rand"
 	"os"
 	"strconv"
@@ -29,7 +34,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/TylerBrock/colorjson"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	glog "google.golang.org/grpc/grpclog"
@@ -41,12 +45,14 @@ import (
 
 // Private Structs
 type TPgeneral struct {
-	hostname   string
-	debuglevel int
-	loglevel   string
-	logformat  string
-	testsize   int
-	sleep      int
+	hostname     string
+	debuglevel   int
+	loglevel     string
+	logformat    string
+	testsize     int
+	sleep        int
+	json_to_file int
+	output_path  string
 }
 
 type TPkafka struct {
@@ -63,28 +69,21 @@ type TPkafka struct {
 	flush_interval    int
 }
 
+type PaymentPoster struct {
+	producer   *kafka.Producer
+	topic      string
+	deliverych chan kafka.Event
+}
+
 var (
 	grpcLog  glog.LoggerV2
 	vGeneral TPgeneral
-	m        = make(map[string]string)
 )
 
 func init() {
+
+	// Keeping it very simple
 	grpcLog = glog.NewLoggerV2(os.Stdout, os.Stdout, os.Stdout)
-
-	// Playing around with Logrus.
-	logLevel, err := log.ParseLevel(os.Getenv("LOG_LEVEL"))
-	if err != nil {
-		logLevel = log.InfoLevel
-	}
-	log.SetLevel(logLevel)
-
-	log.SetOutput(os.Stdout)
-	logFormat := os.Getenv("LOG_FORMAT")
-	if logFormat == "JSON" { // if we want logs in JSON for consumption into ELK or SPLUNK, or any other NoSQL DB Store...
-		log.SetFormatter(&log.JSONFormatter{})
-
-	}
 
 	fmt.Println("###############################################################")
 	fmt.Println("#")
@@ -166,6 +165,7 @@ func CreateTopic(props TPkafka) {
 	}
 
 	adminClient.Close()
+	grpcLog.Infoln("")
 
 }
 
@@ -207,12 +207,33 @@ func loadGeneralProps() TPgeneral {
 
 	}
 
+	vGeneral.json_to_file, err = strconv.Atoi(os.Getenv("JSONTOFILE"))
+	if err != nil {
+		grpcLog.Error("2 String to Int convert error: %s", err)
+
+	}
+
+	if vGeneral.json_to_file == 1 {
+
+		path, err := os.Getwd()
+		vGeneral.output_path = path + "/" + os.Getenv("OUTPUT_PATH")
+
+		if err != nil {
+			grpcLog.Error("Problem retrieving current path: %s", err)
+		}
+
+	}
+
 	grpcLog.Info("****** General Parameters *****")
 	grpcLog.Info("Hostname is\t\t\t", vGeneral.hostname)
 	grpcLog.Info("Debug Level is\t\t", vGeneral.debuglevel)
 	grpcLog.Info("Log Level is\t\t\t", vGeneral.loglevel)
 	grpcLog.Info("Log Format is\t\t\t", vGeneral.logformat)
-	grpcLog.Info("Sleep Duration is\t\t\t", vGeneral.sleep)
+	grpcLog.Info("Sleep Duration is\t\t", vGeneral.sleep)
+	grpcLog.Info("Test Batch Size is\t\t", vGeneral.testsize)
+	grpcLog.Info("Dump JSON to file is\t\t", vGeneral.json_to_file)
+	grpcLog.Info("Output path is\t\t", vGeneral.output_path)
+	grpcLog.Info("")
 
 	return vGeneral
 }
@@ -262,21 +283,51 @@ func loadKafkaProps() TPkafka {
 	grpcLog.Info("Kafka Rep Factor is\t\t", vKafka_ReplicationFactor)
 	grpcLog.Info("Kafka Retension is\t\t", vKafka.retension)
 	grpcLog.Info("Kafka ParseDuration is\t", vKafka.parseduration)
+	grpcLog.Info("")
+	grpcLog.Info("Kafka Flush Size is\t\t", vKafka.flush_interval)
+
+	grpcLog.Info("")
 
 	return vKafka
 }
 
-// Pretty Print JSON interface
-func prettyPrintJSON(v interface{}) {
-	tmpBArray, err := json.MarshalIndent(v, "", "    ")
-	if err == nil {
-		grpcLog.Infof("Message:\n%s\n", tmpBArray)
+func NewPaymentPoster(producer *kafka.Producer, topic string) *PaymentPoster {
 
-	} else {
-		grpcLog.Error("Really!?!? How is this possible:", err)
-		return
-
+	return &PaymentPoster{
+		producer:   producer,
+		topic:      topic,
+		deliverych: make(chan kafka.Event, 10000),
 	}
+}
+
+func (op *PaymentPoster) putPayment(valueBytes []byte, key string) error {
+
+	var (
+		err interface{}
+	)
+
+	// Build the Kafka Message
+	kafkaMsg := &kafka.Message{
+		TopicPartition: kafka.TopicPartition{
+			Topic:     &op.topic,
+			Partition: kafka.PartitionAny,
+		},
+		Value: valueBytes,
+		Key:   []byte(key),
+	}
+
+	// SendIt
+	err = op.producer.Produce(
+		kafkaMsg,
+		op.deliverych,
+	)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	<-op.deliverych
+	return nil
 }
 
 // Pretty Print JSON string
@@ -303,7 +354,6 @@ func main() {
 	vKafka := loadKafkaProps()
 
 	// Create admin client to create the topic if it does not exist
-	grpcLog.Info("")
 	grpcLog.Info("**** Confirm Topic Existence & Configuration ****")
 
 	// Lets make sure the topic/s exist
@@ -313,7 +363,6 @@ func main() {
 	// Create Producer instance
 	// https://docs.confluent.io/current/clients/confluent-kafka-go/index.html#NewProducer
 
-	grpcLog.Info("")
 	grpcLog.Info("**** Configure Client Kafka Connection ****")
 
 	grpcLog.Info("Kafka bootstrap Server is\t", vKafka.bootstrapservers)
@@ -361,6 +410,9 @@ func main() {
 		os.Exit(1)
 
 	} else {
+		// use kafka connection and create a poster onto topic.
+		pp := NewPaymentPoster(p, vKafka.topicname)
+
 		grpcLog.Infoln("Created Kafka Producer instance :")
 		grpcLog.Infoln("")
 
@@ -390,14 +442,14 @@ func main() {
 			//
 			// lets get a random value 0 -> vGeneral.sleep, then delay/sleep as up to that fraction of a second.
 			// this mimics someone thinking, as if this is being done by a human at a keyboard, for batcvh file processing we don't have this.
-			// ie if the user said 200 then it is 1 / 200 of a second or any value between 0 and 200
-			// if user said 1000 then it is 1 / 1000 of a second, or any value between 0 and 10000
-			// n will be between 0 and 1000  aka 0 and 1 second
+			// ie if the user said 200 then it implies a randam value from 0 -> 200 milliseconds.
 
 			if vGeneral.sleep != 0 {
 				rand.Seed(time.Now().UnixNano())
-				n := rand.Intn(vGeneral.sleep) // n will be between 0 and 1000  aka 0 and 1 second
-				fmt.Printf("Sleeping %d Millisecond...\n", n)
+				n := rand.Intn(vGeneral.sleep) // if vGeneral.sleep = 1000, then n will be random value of 0 -> 1000  aka 0 and 1 second
+				if vGeneral.debuglevel >= 2 {
+					fmt.Printf("Sleeping %d Millisecond...\n", n)
+				}
 				time.Sleep(time.Duration(n) * time.Millisecond)
 			}
 
@@ -409,50 +461,53 @@ func main() {
 			gofakeit.Seed(time.Now().UnixNano())
 			gofakeit.Seed(0)
 
-			g_address := gofakeit.Address()
-			g_ccard := gofakeit.CreditCard()
-			g_job := gofakeit.Job()
-			g_contact := gofakeit.Contact()
 			g_person := gofakeit.Person()
 
-			address := &types.TPaddress{
-				Streetname: g_address.Street,
-				City:       g_address.City,
-				State:      g_address.State,
-				Zip:        g_address.Zip,
-				Country:    g_address.Country,
-				Latitude:   g_address.Latitude,
-				Longitude:  g_address.Longitude,
-			}
+			// Commenting this out to reduce the g_person JSON object
+			/*
+				g_address := gofakeit.Address()
+				g_ccard := gofakeit.CreditCard()
+				g_job := gofakeit.Job()
+				g_contact := gofakeit.Contact()
 
-			ccard := &types.TPccard{
-				Type:   g_ccard.Type,
-				Number: g_ccard.Number,
-				Exp:    g_ccard.Exp,
-				Cvv:    g_ccard.Cvv,
-			}
+				address := &types.TPaddress{
+					Streetname: g_address.Street,
+					City:       g_address.City,
+					State:      g_address.State,
+					Zip:        g_address.Zip,
+					Country:    g_address.Country,
+					Latitude:   g_address.Latitude,
+					Longitude:  g_address.Longitude,
+				}
 
-			job := &types.TPjobinfo{
-				Company:    g_job.Company,
-				Title:      g_job.Title,
-				Descriptor: g_job.Descriptor,
-				Level:      g_job.Level,
-			}
+				ccard := &types.TPccard{
+					Type:   g_ccard.Type,
+					Number: g_ccard.Number,
+					Exp:    g_ccard.Exp,
+					Cvv:    g_ccard.Cvv,
+				}
 
-			contact := &types.TPcontact{
-				Email: g_contact.Email,
-				Phone: g_contact.Phone,
-			}
+				job := &types.TPjobinfo{
+					Company:    g_job.Company,
+					Title:      g_job.Title,
+					Descriptor: g_job.Descriptor,
+					Level:      g_job.Level,
+				}
 
+				contact := &types.TPcontact{
+					Email: g_contact.Email,
+					Phone: g_contact.Phone,
+				}
+			*/
 			tperson := &types.TPperson{
-				Ssn:          g_person.SSN,
-				Firstname:    g_person.FirstName,
-				Lastname:     g_person.LastName,
-				Gender:       g_person.Gender,
-				Contact:      *contact,
-				Address:      *address,
-				Ccard:        *ccard,
-				Job:          *job,
+				Ssn:       g_person.SSN,
+				Firstname: g_person.FirstName,
+				Lastname:  g_person.LastName,
+				//				Gender:       g_person.Gender,
+				//				Contact:      *contact,
+				//				Address:      *address,
+				//				Ccard:        *ccard,
+				//				Job:          *job,
 				Created_date: time.Now().Format("2006-01-02T15:04:05"),
 			}
 
@@ -513,6 +568,8 @@ func main() {
 				"transactionId":                uuid.New().String(),
 				"transactionType":              cTransType,
 			}
+
+			cGetRiskStatus := seed.GetRiskStatus()[gofakeit.Number(1, 3)]
 
 			// We cheating, going to use this same aggregator in both TPconfigGroups
 			t_aggregators := []types.TPaggregator{
@@ -625,7 +682,7 @@ func main() {
 						},
 					},
 
-					RiskStatus: "review",
+					RiskStatus: cGetRiskStatus,
 
 					ConfigGroups: []types.TPconfigGroups{
 						types.TPconfigGroups{
@@ -713,22 +770,62 @@ func main() {
 
 			}
 
-			if vGeneral.debuglevel > 0 {
+			if vGeneral.debuglevel > 1 {
 				prettyJSON(string(valueBytes))
 			}
 
-			kafkaMsg := kafka.Message{
-				TopicPartition: kafka.TopicPartition{
-					Topic:     &vKafka.topicname,
-					Partition: kafka.PartitionAny,
-				},
-				Value: valueBytes,      // This is the payload/body thats being posted
-				Key:   []byte(cTenant), // We us this to group the same transactions together in order, .
+			if vGeneral.json_to_file == 0 { // write to Kafka Topic
+
+				if err := pp.putPayment(valueBytes, cTenant); err != nil {
+					grpcLog.Errorln("😢 Darn, there's an error producing the message!", err.Error())
+
+				}
+
+				//Fush every flush_interval loops
+				if vFlush == vKafka.flush_interval {
+					t := 10000
+					if r := p.Flush(t); r > 0 {
+						grpcLog.Errorf("\n--\n⚠️ Failed to flush all messages after %d milliseconds. %d message(s) remain\n", t, r)
+
+					} else {
+						if vGeneral.debuglevel >= 1 {
+							grpcLog.Infoln(count, "/", vFlush, "Messages flushed from the queue")
+						}
+						vFlush = 0
+					}
+				}
+
+			} else { // write to JSON file
+				loc := fmt.Sprintf("%s/%s.json", vGeneral.output_path, t_PaymentNrt["eventId"])
+				if vGeneral.debuglevel > 0 {
+					fmt.Println(loc)
+
+				}
+
+				//...................................
+				// Writing struct type to a JSON file
+				//...................................
+				// Writing
+				// https://www.golangprograms.com/golang-writing-struct-to-json-file.html
+				// https://www.developer.com/languages/json-files-golang/
+				// Reading
+				// https://medium.com/kanoteknologi/better-way-to-read-and-write-json-file-in-golang-9d575b7254f2
+				fd, err := json.MarshalIndent(t_engineResponse, "", " ")
+				if err != nil {
+					grpcLog.Errorln("MarshalIndent error", err)
+
+				}
+
+				err = ioutil.WriteFile(loc, fd, 0644)
+				if err != nil {
+					grpcLog.Errorln("ioutil.WriteFile error", err)
+
+				}
 			}
 
 			// We will decide if we want to keep this bit!!! or simplify it.
 			//
-			// Handle any events that we get
+			// Convenient way to Handle any events (back chatter) that we get
 			go func() {
 				doTerm := false
 				for !doTerm {
@@ -743,19 +840,13 @@ func main() {
 							// It's a delivery report
 							km := ev.(*kafka.Message)
 							if km.TopicPartition.Error != nil {
-								if vGeneral.debuglevel > 2 {
-									fmt.Printf("☠️ Failed to send message '%v' to topic '%v'\n\tErr: %v",
-										string(km.Value),
-										string(*km.TopicPartition.Topic),
-										km.TopicPartition.Error)
-
-								}
+								fmt.Errorf("☠️ Failed to send message '%v' to topic '%v'\n\tErr: %v",
+									string(km.Value),
+									string(*km.TopicPartition.Topic),
+									km.TopicPartition.Error)
 
 							} else {
-								if vGeneral.debuglevel == 1 {
-									//fmt.Println(person.Firstname, " ", person.Lastname, " ", person.Ssn)
-
-								} else if vGeneral.debuglevel == 4 {
+								if vGeneral.debuglevel > 2 {
 
 									fmt.Printf("✅ Message '%v' delivered to topic '%v'(partition %d at offset %d)\n",
 										string(km.Value),
@@ -780,24 +871,6 @@ func main() {
 				close(doneChan)
 			}()
 
-			// This is where we publish message onto the topic... on the cluster
-			// Produce the message
-			if e := p.Produce(&kafkaMsg, nil); e != nil {
-				grpcLog.Errorln("😢 Darn, there's an error producing the message!", e.Error())
-
-			}
-
-			//Fush every flush_interval loops
-			if vFlush == vKafka.flush_interval {
-				t := 10000
-				if r := p.Flush(t); r > 0 {
-					grpcLog.Errorf("\n--\n⚠️ Failed to flush all messages after %d milliseconds. %d message(s) remain\n", t, r)
-
-				} else {
-					grpcLog.Infoln(vFlush, "Messages flushed from the queue")
-					vFlush = 0
-				}
-			}
 			vFlush++
 
 		}
@@ -812,14 +885,17 @@ func main() {
 			//logCtx.Errorf(fmt.Sprintf("\n--\n⚠️ Failed to flush all messages after %d milliseconds. %d message(s) remain\n", t, r))
 
 		} else {
-			grpcLog.Infoln("\n--\n✨ All messages flushed from the queue")
-
+			if vGeneral.debuglevel >= 1 {
+				grpcLog.Infoln("\n--\n✨ All messages flushed from the queue")
+			}
 		}
 
-		fmt.Println("Start      : ", vStart)
-		fmt.Println("End        : ", vEnd)
-		fmt.Println("Duration   : ", vEnd.Sub(vStart))
-		fmt.Println("Records    : ", vGeneral.testsize)
+		if vGeneral.debuglevel >= 1 {
+			fmt.Println("Start      : ", vStart)
+			fmt.Println("End        : ", vEnd)
+			fmt.Println("Duration   : ", vEnd.Sub(vStart))
+			fmt.Println("Records    : ", vGeneral.testsize)
+		}
 
 		// --
 		// Stop listening to events and close the producer

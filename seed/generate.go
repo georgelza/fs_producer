@@ -78,3 +78,14 @@ func GetEntityId() map[int]string {
 
 	return ar
 }
+
+func GetRiskStatus() map[int]string {
+
+	ar := make(map[int]string)
+
+	ar[1] = "reviewe"
+	ar[2] = "risk-noreview"
+	ar[3] = "no-risk"
+
+	return ar
+}
