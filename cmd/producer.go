@@ -123,8 +123,8 @@ func CreateTopic(props TPkafka) {
 
 	adminClient, err := kafka.NewAdminClient(&cm)
 	if err != nil {
-		grpcLog.Errorln("Failed to create Admin client: %s", err)
-		os.Exit(1)
+		grpcLog.Fatalf("Failed to create Admin client: %s\n", err)
+
 	}
 	grpcLog.Infoln("Succeeded to create Admin client")
 
@@ -133,8 +133,7 @@ func CreateTopic(props TPkafka) {
 
 	maxDuration, err := time.ParseDuration(props.parseduration)
 	if err != nil {
-		grpcLog.Errorln(fmt.Sprintf("Error Configuring maxDuration via ParseDuration: %s", props.parseduration))
-		os.Exit(1)
+		grpcLog.Fatalf(fmt.Sprintf("Error Configuring maxDuration via ParseDuration: %s\n", props.parseduration))
 
 	}
 	grpcLog.Infoln("Configured maxDuration via ParseDuration")
@@ -147,19 +146,18 @@ func CreateTopic(props TPkafka) {
 		kafka.SetAdminOperationTimeout(maxDuration))
 
 	if err != nil {
-		fmt.Printf("Problem during the topic creation: %v\n", err)
-		os.Exit(1)
+		grpcLog.Fatalf("Problem during the topic creation: %v\n", err)
 	}
 
 	// Check for specific topic errors
 	for _, result := range results {
 		if result.Error.Code() != kafka.ErrNoError &&
 			result.Error.Code() != kafka.ErrTopicAlreadyExists {
-			grpcLog.Info(fmt.Sprintf("Topic creation failed for %s: %v", result.Topic, result.Error.String()))
-			os.Exit(1)
+
+			grpcLog.Fatalf(fmt.Sprintf("Topic creation failed for %s: %v\n", result.Topic, result.Error.String()))
 
 		} else {
-			grpcLog.Info(fmt.Sprintf("Topic creation Succeeded for %s", result.Topic))
+			grpcLog.Infoln(fmt.Sprintf("Topic creation Succeeded for %s", result.Topic))
 
 		}
 	}
@@ -171,15 +169,13 @@ func CreateTopic(props TPkafka) {
 
 func loadGeneralProps() TPgeneral {
 
-	//	var vGeneral TPgeneral
-
 	// Lets identify ourself - helpful concept in a container environment.
 	var err interface{}
 
 	vHostname, err := os.Hostname()
 	if err != nil {
-		grpcLog.Error("Can't retrieve hostname", err)
-		//logCtx.Error(fmt.Sprintf("Can't retrieve hostname %s", err))
+		grpcLog.Error("Can't retrieve hostname %s\n", err)
+
 	}
 	vGeneral.hostname = vHostname
 
@@ -189,38 +185,37 @@ func loadGeneralProps() TPgeneral {
 	// Lets manage how much we print to the screen
 	vGeneral.debuglevel, err = strconv.Atoi(os.Getenv("DEBUGLEVEL"))
 	if err != nil {
-		grpcLog.Error("1 String to Int convert error: %s", err)
+		grpcLog.Error("String to Int convert error: %s\n", err)
 
 	}
 
 	// Lets manage how much we print to the screen
 	vGeneral.testsize, err = strconv.Atoi(os.Getenv("TESTSIZE"))
 	if err != nil {
-		grpcLog.Error("2 String to Int convert error: %s", err)
+		grpcLog.Error("String to Int convert error: %s\n", err)
 
 	}
 
 	// Lets manage how much we print to the screen
 	vGeneral.sleep, err = strconv.Atoi(os.Getenv("SLEEP"))
 	if err != nil {
-		grpcLog.Error("2 String to Int convert error: %s", err)
+		grpcLog.Error("String to Int convert error: %s\n", err)
 
 	}
 
 	vGeneral.json_to_file, err = strconv.Atoi(os.Getenv("JSONTOFILE"))
 	if err != nil {
-		grpcLog.Error("2 String to Int convert error: %s", err)
+		grpcLog.Error("String to Int convert error: %s\n", err)
 
 	}
 
 	if vGeneral.json_to_file == 1 {
 
 		path, err := os.Getwd()
-		vGeneral.output_path = path + "/" + os.Getenv("OUTPUT_PATH")
-
 		if err != nil {
-			grpcLog.Error("Problem retrieving current path: %s", err)
+			grpcLog.Error("Problem retrieving current path: %s\n", err)
 		}
+		vGeneral.output_path = path + "/" + os.Getenv("OUTPUT_PATH")
 
 	}
 
@@ -300,7 +295,7 @@ func NewPaymentPoster(producer *kafka.Producer, topic string) *PaymentPoster {
 	}
 }
 
-func (op *PaymentPoster) putPayment(valueBytes []byte, key string) error {
+func (op *PaymentPoster) postPayment(valueBytes []byte, key string) error {
 
 	var (
 		err interface{}
@@ -787,7 +782,7 @@ func main() {
 
 			if vGeneral.json_to_file == 0 { // write to Kafka Topic
 
-				if err := pp.putPayment(valueBytes, cTenant); err != nil {
+				if err := pp.postPayment(valueBytes, cTenant); err != nil {
 					grpcLog.Errorln("😢 Darn, there's an error producing the message!", err.Error())
 
 				}
