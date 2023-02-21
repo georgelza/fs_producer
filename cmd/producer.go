@@ -107,7 +107,6 @@ func CreateTopic(props tp_kafka) {
 		"broker.version.fallback": "0.10.0.0",
 		"api.version.fallback.ms": 0,
 	}
-	grpcLog.Infoln("Basic Client ConfigMap compiled")
 
 	if props.sasl_mechanisms != "" {
 		cm["sasl.mechanisms"] = props.sasl_mechanisms
@@ -117,22 +116,21 @@ func CreateTopic(props tp_kafka) {
 		grpcLog.Infoln("Security Authentifaction configured in ConfigMap")
 
 	}
-
-	grpcLog.Infoln("Create Topic Config map compiled")
+	grpcLog.Infoln("Basic Client ConfigMap compiled")
 
 	adminClient, err := kafka.NewAdminClient(&cm)
 	if err != nil {
-		grpcLog.Fatalf("Failed to create Admin client: %s\n", err)
+		grpcLog.Fatalln("Admin Client Creation Failed: %s", err)
 
 	}
-	grpcLog.Infoln("Succeeded to create Admin client")
+	grpcLog.Infoln("Admin Client Created Succeeded")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	maxDuration, err := time.ParseDuration(props.parseduration)
 	if err != nil {
-		grpcLog.Fatalf(fmt.Sprintf("Error Configuring maxDuration via ParseDuration: %s\n", props.parseduration))
+		grpcLog.Fatalln(fmt.Sprintf("Error Configuring maxDuration via ParseDuration: %s", props.parseduration))
 
 	}
 	grpcLog.Infoln("Configured maxDuration via ParseDuration")
@@ -145,7 +143,7 @@ func CreateTopic(props tp_kafka) {
 		kafka.SetAdminOperationTimeout(maxDuration))
 
 	if err != nil {
-		grpcLog.Fatalf("Problem during the topic creation: %v\n", err)
+		grpcLog.Fatalln("Problem during the topic creation: %v", err)
 	}
 
 	// Check for specific topic errors
@@ -153,10 +151,10 @@ func CreateTopic(props tp_kafka) {
 		if result.Error.Code() != kafka.ErrNoError &&
 			result.Error.Code() != kafka.ErrTopicAlreadyExists {
 
-			grpcLog.Fatalf(fmt.Sprintf("Topic creation failed for %s: %v\n", result.Topic, result.Error.String()))
+			grpcLog.Fatalln(fmt.Sprintf("Topic Creation Failed for %s: %v", result.Topic, result.Error.String()))
 
 		} else {
-			grpcLog.Infoln(fmt.Sprintf("Topic creation Succeeded for %s", result.Topic))
+			grpcLog.Infoln(fmt.Sprintf("Topic Creation Succeeded for %s", result.Topic))
 
 		}
 	}
@@ -173,7 +171,7 @@ func loadGeneralProps() (vGeneral tp_general) {
 
 	vHostname, err := os.Hostname()
 	if err != nil {
-		grpcLog.Error("Can't retrieve hostname %s\n", err)
+		grpcLog.Errorln("Can't retrieve hostname %s", err)
 
 	}
 	vGeneral.hostname = vHostname
@@ -184,27 +182,27 @@ func loadGeneralProps() (vGeneral tp_general) {
 	// Lets manage how much we print to the screen
 	vGeneral.debuglevel, err = strconv.Atoi(os.Getenv("DEBUGLEVEL"))
 	if err != nil {
-		grpcLog.Error("String to Int convert error: %s\n", err)
+		grpcLog.Errorln("String to Int convert error: %s", err)
 
 	}
 
 	// Lets manage how much we print to the screen
 	vGeneral.testsize, err = strconv.Atoi(os.Getenv("TESTSIZE"))
 	if err != nil {
-		grpcLog.Error("String to Int convert error: %s\n", err)
+		grpcLog.Errorln("String to Int convert error: %s", err)
 
 	}
 
 	// Lets manage how much we print to the screen
 	vGeneral.sleep, err = strconv.Atoi(os.Getenv("SLEEP"))
 	if err != nil {
-		grpcLog.Error("String to Int convert error: %s\n", err)
+		grpcLog.Errorln("String to Int convert error: %s", err)
 
 	}
 
 	vGeneral.json_to_file, err = strconv.Atoi(os.Getenv("JSONTOFILE"))
 	if err != nil {
-		grpcLog.Error("String to Int convert error: %s\n", err)
+		grpcLog.Errorln("String to Int convert error: %s", err)
 
 	}
 
@@ -212,7 +210,7 @@ func loadGeneralProps() (vGeneral tp_general) {
 
 		path, err := os.Getwd()
 		if err != nil {
-			grpcLog.Error("Problem retrieving current path: %s\n", err)
+			grpcLog.Errorln("Problem retrieving current path: %s", err)
 		}
 		vGeneral.output_path = path + "/" + os.Getenv("OUTPUT_PATH")
 
