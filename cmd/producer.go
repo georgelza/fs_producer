@@ -84,19 +84,19 @@ func init() {
 	// Keeping it very simple
 	grpcLog = glog.NewLoggerV2(os.Stdout, os.Stdout, os.Stdout)
 
-	fmt.Println("###############################################################")
-	fmt.Println("#")
-	fmt.Println("#   File      : producer.go")
-	fmt.Println("#")
-	fmt.Println("#	 Comment   : Fake Kafka Producer - Applab Example")
-	fmt.Println("#")
-	fmt.Println("#   By        : George Leonard (georgelza@gmail.com)")
-	fmt.Println("#")
-	fmt.Println("#   Date/Time :", time.Now().Format("27-01-2023 - 15:04:05"))
-	fmt.Println("#")
-	fmt.Println("###############################################################")
-	fmt.Println("")
-	fmt.Println("*")
+	grpcLog.Infoln("###############################################################")
+	grpcLog.Infoln("#")
+	grpcLog.Infoln("#   File      : producer.go")
+	grpcLog.Infoln("#")
+	grpcLog.Infoln("#	 Comment   : Fake Kafka Producer - Applab Example")
+	grpcLog.Infoln("#")
+	grpcLog.Infoln("#   By        : George Leonard (georgelza@gmail.com)")
+	grpcLog.Infoln("#")
+	grpcLog.Infoln("#   Date/Time :", time.Now().Format("27-01-2023 - 15:04:05"))
+	grpcLog.Infoln("#")
+	grpcLog.Infoln("###############################################################")
+	grpcLog.Infoln("")
+	grpcLog.Infoln("")
 
 }
 
@@ -529,8 +529,12 @@ func main() {
 		// use the kafka connection object and create a PaymentPosted that will post onto our topic.
 		pp := NewPaymentPoster(p, vKafka.topicname)
 
-		grpcLog.Infoln("Created Kafka Producer instance :")
-		grpcLog.Infoln("")
+		if vGeneral.debuglevel > 0 {
+			grpcLog.Infoln("Created Kafka Producer instance :")
+			grpcLog.Infoln("")
+			grpcLog.Info("**** LETS GO Processing ****")
+			grpcLog.Infoln("")
+		}
 
 		///////////////////////////////////////////////////////
 		//
@@ -787,7 +791,7 @@ func main() {
 				if vFlush == vKafka.flush_interval {
 					t := 10000
 					if r := p.Flush(t); r > 0 {
-						grpcLog.Errorf("\n--\n⚠️ Failed to flush all messages after %d milliseconds. %d message(s) remain\n", t, r)
+						grpcLog.Errorln("Failed to flush all messages after %d milliseconds. %d message(s) remain", t, r)
 
 					} else {
 						if vGeneral.debuglevel >= 1 {
@@ -802,7 +806,7 @@ func main() {
 				// define, contruct the file name
 				loc := fmt.Sprintf("%s/%s.json", vGeneral.output_path, t_PaymentNrt["eventId"])
 				if vGeneral.debuglevel > 0 {
-					fmt.Println(loc)
+					grpcLog.Infoln(loc)
 
 				}
 
@@ -844,7 +848,7 @@ func main() {
 							// It's a delivery report
 							km := ev.(*kafka.Message)
 							if km.TopicPartition.Error != nil {
-								fmt.Errorf("☠️ Failed to send message '%v' to topic '%v'\n\tErr: %v",
+								grpcLog.Infoln("☠️ Failed to send message '%v' to topic '%v'\tErr: %v",
 									string(km.Value),
 									string(*km.TopicPartition.Topic),
 									km.TopicPartition.Error)
@@ -852,7 +856,7 @@ func main() {
 							} else {
 								if vGeneral.debuglevel > 2 {
 
-									fmt.Printf("✅ Message '%v' delivered to topic '%v'(partition %d at offset %d)\n",
+									grpcLog.Infoln("✅ Message '%v' delivered to topic '%v'(partition %d at offset %d)",
 										string(km.Value),
 										string(*km.TopicPartition.Topic),
 										km.TopicPartition.Partition,
@@ -863,7 +867,7 @@ func main() {
 						case kafka.Error:
 							// It's an error
 							em := ev.(kafka.Error)
-							grpcLog.Errorln("☠️ Uh oh, caught an error:\n\t%v\n", em)
+							grpcLog.Errorln("☠️ Uh oh, caught an error:\n\t%v", em)
 							//logCtx.Errorf(fmt.Sprintf("☠️ Uh oh, caught an error:\n\t%v\n", em))
 
 						}
@@ -881,24 +885,33 @@ func main() {
 
 		vEnd := time.Now()
 
+		if vGeneral.debuglevel > 0 {
+			grpcLog.Infoln("")
+			grpcLog.Infoln("**** DONE Processing ****")
+			grpcLog.Infoln("")
+		}
+
 		// --
 		// Flush the Producer queue, t = TimeOut, 1000 = 1 second
 		t := 10000
 		if r := p.Flush(t); r > 0 {
-			grpcLog.Errorf("\n--\n⚠️ Failed to flush all messages after %d milliseconds. %d message(s) remain\n", t, r)
+			grpcLog.Errorln("Failed to flush all messages after %d milliseconds. %d message(s) remain", t, r)
 			//logCtx.Errorf(fmt.Sprintf("\n--\n⚠️ Failed to flush all messages after %d milliseconds. %d message(s) remain\n", t, r))
 
 		} else {
 			if vGeneral.debuglevel >= 1 {
-				grpcLog.Infoln("\n--\n✨ All messages flushed from the queue")
+				grpcLog.Infoln("All messages flushed from the queue")
+				grpcLog.Infoln("")
+
 			}
 		}
 
 		if vGeneral.debuglevel >= 1 {
-			fmt.Println("Start      : ", vStart)
-			fmt.Println("End        : ", vEnd)
-			fmt.Println("Duration   : ", vEnd.Sub(vStart))
-			fmt.Println("Records    : ", vGeneral.testsize)
+			grpcLog.Infoln("Start      : ", vStart)
+			grpcLog.Infoln("End        : ", vEnd)
+			grpcLog.Infoln("Duration   : ", vEnd.Sub(vStart))
+			grpcLog.Infoln("Records    : ", vGeneral.testsize)
+			grpcLog.Infoln("")
 		}
 
 		// --
