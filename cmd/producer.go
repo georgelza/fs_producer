@@ -347,6 +347,130 @@ func prettyJSON(ms string) {
 
 }
 
+// This was originally in main body, pulled it out here to show how we can construct the payload or parts
+// in external sections and then bring it back
+func contructPaymentNrt() (t_PaymentNrt map[string]interface{}, cTenant string, cMerchant string) {
+
+	// We just using gofakeit to pad the json document size a bit.
+	//
+	// https://github.com/brianvoe/gofakeit
+	// https://pkg.go.dev/github.com/brianvoe/gofakeit
+
+	gofakeit.Seed(time.Now().UnixNano())
+	gofakeit.Seed(0)
+
+	g_person := gofakeit.Person()
+
+	// Commenting this out to reduce the g_person JSON object
+	/*
+		g_address := gofakeit.Address()
+		g_ccard := gofakeit.CreditCard()
+		g_job := gofakeit.Job()
+		g_contact := gofakeit.Contact()
+
+		address := &types.TPaddress{
+			Streetname: g_address.Street,
+			City:       g_address.City,
+			State:      g_address.State,
+			Zip:        g_address.Zip,
+			Country:    g_address.Country,
+			Latitude:   g_address.Latitude,
+			Longitude:  g_address.Longitude,
+		}
+
+		ccard := &types.TPccard{
+			Type:   g_ccard.Type,
+			Number: g_ccard.Number,
+			Exp:    g_ccard.Exp,
+			Cvv:    g_ccard.Cvv,
+		}
+
+		job := &types.TPjobinfo{
+			Company:    g_job.Company,
+			Title:      g_job.Title,
+			Descriptor: g_job.Descriptor,
+			Level:      g_job.Level,
+		}
+
+		contact := &types.TPcontact{
+			Email: g_contact.Email,
+			Phone: g_contact.Phone,
+		}
+	*/
+	tperson := &types.TPperson{
+		Ssn:       g_person.SSN,
+		Firstname: g_person.FirstName,
+		Lastname:  g_person.LastName,
+		//				Gender:       g_person.Gender,
+		//				Contact:      *contact,
+		//				Address:      *address,
+		//				Ccard:        *ccard,
+		//				Job:          *job,
+		Created_date: time.Now().Format("2006-01-02T15:04:05"),
+	}
+
+	// Lets start building the various bits that comprises the engineResponse JSON Doc
+	// This is the original inbound event, will be 2, 1 for outbound bank and 1 for inbound bank out
+	//
+
+	cTransType := seed.GetTransType()[gofakeit.Number(1, 4)]
+	cDirection := seed.GetDirection()[gofakeit.Number(1, 2)]
+	nAmount := fmt.Sprintf("%9.2f", gofakeit.Price(0, 999999999))
+
+	cTenant = seed.GetTenants()[gofakeit.Number(1, 15)] // tenants
+	cMerchant = seed.GetEntityId()[gofakeit.Number(1, 26)]
+
+	t_amount := &types.TPamount{
+		BaseCurrency: "zar",
+		BaseValue:    nAmount,
+		Burrency:     "zar",
+		Value:        nAmount,
+	}
+
+	//
+	// This would all be coming from the S3 bucket via a source connector,
+	// so instead of generating the data we would simply read the
+	// JSON document and push it to Kafka topic.
+	//
+
+	// We ust showing 2 ways to construct a JSON document to be Marshalled, this is the first using a map/interface,
+	// followed by using a set of struct objects added together.
+	t_PaymentNrt = map[string]interface{}{
+		"accountAgentId":               strconv.Itoa(rand.Intn(6)),
+		"accountEntityId":              strconv.Itoa(rand.Intn(6)),
+		"accountId":                    strconv.Itoa(gofakeit.CreditCardNumber()),
+		"amount":                       t_amount,
+		"counterpartyEntityId":         strconv.Itoa(gofakeit.Number(0, 9999)),
+		"counterpartyId":               strconv.Itoa(gofakeit.Number(10000, 19999)),
+		"counterpartyName":             *tperson,
+		"customerEntityId":             "customerEntityId_1",
+		"customerId":                   "customerId_1",
+		"direction":                    cDirection,
+		"eventId":                      strconv.Itoa(gofakeit.CreditCardNumber()),
+		"eventTime":                    time.Now().Format("2006-01-02T15:04:05"),
+		"eventType":                    "paymentRT",
+		"fromId":                       strconv.Itoa(gofakeit.CreditCardNumber()),
+		"instructedAgentId":            strconv.Itoa(gofakeit.Number(0, 4999)),
+		"instructingAgentId":           strconv.Itoa(gofakeit.Number(5000, 9999)),
+		"msgStatus":                    "msgStatus_1",
+		"msgType":                      "msgType_1",
+		"numberOfTransactions":         strconv.Itoa(gofakeit.Number(0, 99)),
+		"paymentFrequency":             strconv.Itoa(gofakeit.Number(1, 12)),
+		"paymentMethod":                "paymentMethod_1",
+		"schemaVersion":                "1",
+		"serviceLevelCode":             "serviceLevelCode_1",
+		"settlementClearingSystemCode": "settlementClearingSystemCode_1",
+		"settlementDate":               time.Now().Format("2006-01-02"),
+		"settlementMethod":             "samos",
+		"tenantId":                     []string{cTenant},
+		"toId":                         strconv.Itoa(gofakeit.CreditCardNumber()),
+		"transactionId":                uuid.New().String(),
+		"transactionType":              cTransType,
+	}
+
+	return t_PaymentNrt, cTenant, cMerchant
+}
+
 func main() {
 
 	// Initialize the vGeneral struct variable.
@@ -410,7 +534,8 @@ func main() {
 		os.Exit(1)
 
 	} else {
-		// use kafka connection and create a poster onto topic.
+
+		// use the kafka connection object and create a PaymentPosted that will post onto our topic.
 		pp := NewPaymentPoster(p, vKafka.topicname)
 
 		grpcLog.Infoln("Created Kafka Producer instance :")
@@ -453,121 +578,7 @@ func main() {
 				time.Sleep(time.Duration(n) * time.Millisecond)
 			}
 
-			// We just using gofakeit to pad the json document size a bit.
-			//
-			// https://github.com/brianvoe/gofakeit
-			// https://pkg.go.dev/github.com/brianvoe/gofakeit
-
-			gofakeit.Seed(time.Now().UnixNano())
-			gofakeit.Seed(0)
-
-			g_person := gofakeit.Person()
-
-			// Commenting this out to reduce the g_person JSON object
-			/*
-				g_address := gofakeit.Address()
-				g_ccard := gofakeit.CreditCard()
-				g_job := gofakeit.Job()
-				g_contact := gofakeit.Contact()
-
-				address := &types.TPaddress{
-					Streetname: g_address.Street,
-					City:       g_address.City,
-					State:      g_address.State,
-					Zip:        g_address.Zip,
-					Country:    g_address.Country,
-					Latitude:   g_address.Latitude,
-					Longitude:  g_address.Longitude,
-				}
-
-				ccard := &types.TPccard{
-					Type:   g_ccard.Type,
-					Number: g_ccard.Number,
-					Exp:    g_ccard.Exp,
-					Cvv:    g_ccard.Cvv,
-				}
-
-				job := &types.TPjobinfo{
-					Company:    g_job.Company,
-					Title:      g_job.Title,
-					Descriptor: g_job.Descriptor,
-					Level:      g_job.Level,
-				}
-
-				contact := &types.TPcontact{
-					Email: g_contact.Email,
-					Phone: g_contact.Phone,
-				}
-			*/
-			tperson := &types.TPperson{
-				Ssn:       g_person.SSN,
-				Firstname: g_person.FirstName,
-				Lastname:  g_person.LastName,
-				//				Gender:       g_person.Gender,
-				//				Contact:      *contact,
-				//				Address:      *address,
-				//				Ccard:        *ccard,
-				//				Job:          *job,
-				Created_date: time.Now().Format("2006-01-02T15:04:05"),
-			}
-
-			// Lets start building the various bits that comprises the engineResponse JSON Doc
-			// This is the original inbound event, will be 2, 1 for outbound bank and 1 for inbound bank out
-			//
-
-			cTenant := seed.GetTenants()[gofakeit.Number(1, 15)] // tenants
-			cTransType := seed.GetTransType()[gofakeit.Number(1, 4)]
-			cDirection := seed.GetDirection()[gofakeit.Number(1, 2)]
-			nAmount := fmt.Sprintf("%9.2f", gofakeit.Price(0, 999999999))
-			cMerchant := seed.GetEntityId()[gofakeit.Number(1, 26)]
-
-			t_amount := &types.TPamount{
-				BaseCurrency: "zar",
-				BaseValue:    nAmount,
-				Burrency:     "zar",
-				Value:        nAmount,
-			}
-
-			//
-			// This would all be coming from the S3 bucket via a source connector,
-			// so instead of generating the data we would simply read the
-			// JSON document and push it to Kafka topic.
-			//
-
-			// We ust showing 2 ways to construct a JSON document to be Marshalled, this is the first using a map/interface,
-			// followed by using a set of struct objects added together.
-			t_PaymentNrt := map[string]interface{}{
-				"accountAgentId":               strconv.Itoa(rand.Intn(6)),
-				"accountEntityId":              strconv.Itoa(rand.Intn(6)),
-				"accountId":                    strconv.Itoa(gofakeit.CreditCardNumber()),
-				"amount":                       t_amount,
-				"counterpartyEntityId":         strconv.Itoa(gofakeit.Number(0, 9999)),
-				"counterpartyId":               strconv.Itoa(gofakeit.Number(10000, 19999)),
-				"counterpartyName":             *tperson,
-				"customerEntityId":             "customerEntityId_1",
-				"customerId":                   "customerId_1",
-				"direction":                    cDirection,
-				"eventId":                      strconv.Itoa(gofakeit.CreditCardNumber()),
-				"eventTime":                    time.Now().Format("2006-01-02T15:04:05"),
-				"eventType":                    "paymentRT",
-				"fromId":                       strconv.Itoa(gofakeit.CreditCardNumber()),
-				"instructedAgentId":            strconv.Itoa(gofakeit.Number(0, 4999)),
-				"instructingAgentId":           strconv.Itoa(gofakeit.Number(5000, 9999)),
-				"msgStatus":                    "msgStatus_1",
-				"msgType":                      "msgType_1",
-				"numberOfTransactions":         strconv.Itoa(gofakeit.Number(0, 99)),
-				"paymentFrequency":             strconv.Itoa(gofakeit.Number(1, 12)),
-				"paymentMethod":                "paymentMethod_1",
-				"schemaVersion":                "1",
-				"serviceLevelCode":             "serviceLevelCode_1",
-				"settlementClearingSystemCode": "settlementClearingSystemCode_1",
-				"settlementDate":               time.Now().Format("2006-01-02"),
-				"settlementMethod":             "samos",
-				"tenantId":                     []string{cTenant},
-				"toId":                         strconv.Itoa(gofakeit.CreditCardNumber()),
-				"transactionId":                uuid.New().String(),
-				"transactionType":              cTransType,
-			}
+			t_PaymentNrt, cTenant, cMerchant := contructPaymentNrt()
 
 			cGetRiskStatus := seed.GetRiskStatus()[gofakeit.Number(1, 3)]
 
@@ -743,7 +754,7 @@ func main() {
 			}
 
 			/*
-				engineResponse := map[string]interface{}{
+				t_engineResponse := map[string]interface{}{
 					"Entities":         t_entity,
 					"JsonVersion":      4,
 					"OriginatingEvent": t_PaymentNrt,
@@ -763,7 +774,7 @@ func main() {
 				Versions:         t_versions,
 			}
 
-			// Change/Marshal the person variable int a json object
+			// Change/Marshal the t_engineResponse variable into an array of bytes required to be send
 			valueBytes, err := json.Marshal(t_engineResponse)
 			if err != nil {
 				grpcLog.Errorln("Marchalling error: ", err)
@@ -795,7 +806,9 @@ func main() {
 					}
 				}
 
-			} else { // write to JSON file
+			} else { // write the JSON to a file rather
+
+				// define, contruct the file name
 				loc := fmt.Sprintf("%s/%s.json", vGeneral.output_path, t_PaymentNrt["eventId"])
 				if vGeneral.debuglevel > 0 {
 					fmt.Println(loc)
