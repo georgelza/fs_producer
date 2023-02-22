@@ -1,4 +1,4 @@
-/*
+/*****************************************************************************
 *
 *	File			: producer.go
 *
@@ -15,7 +15,7 @@
 *
 *	jsonformatter 	: https://jsonformatter.curiousconcept.com/#
 *
- */
+*****************************************************************************/
 
 package main
 
@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
 	"strconv"
@@ -67,12 +66,6 @@ type tp_kafka struct {
 	sasl_username     string
 	sasl_password     string
 	flush_interval    int
-}
-
-type PaymentPoster struct {
-	producer   *kafka.Producer
-	topic      string
-	deliverych chan kafka.Event
 }
 
 var (
@@ -249,7 +242,7 @@ func loadKafkaProps() (vKafka tp_kafka) {
 
 	vKafka.flush_interval, err = strconv.Atoi(os.Getenv("kafka_flushinterval"))
 	if err != nil {
-		grpcLog.Error("2 String to Int convert error: %s", err)
+		grpcLog.Error("String to Int convert error: %s", err)
 
 	}
 
@@ -280,45 +273,6 @@ func loadKafkaProps() (vKafka tp_kafka) {
 	grpcLog.Info("")
 
 	return vKafka
-}
-
-func NewPaymentPoster(producer *kafka.Producer, topic string) *PaymentPoster {
-
-	return &PaymentPoster{
-		producer:   producer,
-		topic:      topic,
-		deliverych: make(chan kafka.Event, 10000),
-	}
-}
-
-func (op *PaymentPoster) postPayment(valueBytes []byte, key string) error {
-
-	var (
-		err interface{}
-	)
-
-	// Build the Kafka Message
-	kafkaMsg := &kafka.Message{
-		TopicPartition: kafka.TopicPartition{
-			Topic:     &op.topic,
-			Partition: kafka.PartitionAny,
-		},
-		Value: valueBytes,
-		Key:   []byte(key),
-	}
-
-	// SendIt
-	err = op.producer.Produce(
-		kafkaMsg,
-		op.deliverych,
-	)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	<-op.deliverych
-	return nil
 }
 
 // Pretty Print JSON string
@@ -525,9 +479,6 @@ func main() {
 		os.Exit(1)
 
 	} else {
-
-		// use the kafka connection object and create a PaymentPosted that will post onto our topic.
-		pp := NewPaymentPoster(p, vKafka.topicname)
 
 		if vGeneral.debuglevel > 0 {
 			grpcLog.Infoln("Created Kafka Producer instance :")
@@ -748,18 +699,6 @@ func main() {
 				},
 			}
 
-			/*
-				t_engineResponse := map[string]interface{}{
-					"Entities":         t_entity,
-					"JsonVersion":      4,
-					"OriginatingEvent": t_PaymentNrt,
-					"OutputTime":       time.Now().Format("2006-01-02T15:04:05"),
-					"ProcessorId":      "proc",
-					"Versions":         t_versions,
-				} */
-
-			// OR
-
 			t_engineResponse := types.TPengineResponse{
 				Entities:         t_entity,
 				JsonVersion:      4,
@@ -776,14 +715,25 @@ func main() {
 
 			}
 
+			kafkaMsg := kafka.Message{
+				TopicPartition: kafka.TopicPartition{
+					Topic:     &vKafka.topicname,
+					Partition: kafka.PartitionAny,
+				},
+				Value: valueBytes,      // This is the payload/body thats being posted
+				Key:   []byte(cTenant), // We us this to group the same transactions together in order, IE submitting/Debtor Bank.
+			}
+
 			if vGeneral.debuglevel > 1 {
 				prettyJSON(string(valueBytes))
 			}
 
 			if vGeneral.json_to_file == 0 { // write to Kafka Topic
 
-				if err := pp.postPayment(valueBytes, cTenant); err != nil {
-					grpcLog.Errorln("😢 Darn, there's an error producing the message!", err.Error())
+				// This is where we publish message onto the topic... on the cluster
+				// Produce the message
+				if e := p.Produce(&kafkaMsg, nil); e != nil {
+					grpcLog.Errorln("😢 Darn, there's an error producing the message!", e.Error())
 
 				}
 

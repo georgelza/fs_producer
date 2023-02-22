@@ -1,0 +1,331 @@
+{
+ "entities": [
+  {
+   "tenantId": "Ubank",
+   "entityType": "merchant",
+   "entityId": "Edgars",
+   "overallScore": {
+    "aggregationModel": "aggModel",
+    "overallScore": 0.2
+   },
+   "models": [
+    {
+     "modelid": "model1",
+     "score": 0.5,
+     "confidence": 0.2,
+     "modeldata": {}
+    },
+    {
+     "modelid": "model2",
+     "score": 0.1,
+     "confidence": 0.9,
+     "modeldata": {
+      "adata": "aData ASet"
+     }
+    },
+    {
+     "modelid": "aggModel",
+     "score": 0.2,
+     "confidence": 0.9,
+     "modeldata": {
+      "adata": "aData BSet"
+     }
+    }
+   ],
+   "failedModels": [
+    "fm1",
+    "fm2"
+   ],
+   "outputTags": [
+    {
+     "tag": "codes",
+     "values": [
+      "highValueTransaction",
+      "fraud"
+     ]
+    },
+    {
+     "tag": "otherTag",
+     "values": [
+      "t1",
+      "t2"
+     ]
+    }
+   ],
+   "riskStatus": "reviewe",
+   "configGroups": [
+    {
+     "type": "global",
+     "triggeredRules": [
+      "rule1",
+      "rule2"
+     ],
+     "aggregators": [
+      {
+       "aggregatorId": "agg1",
+       "scores": {
+        "models": [
+         {
+          "modelid": "model1",
+          "score": 0.51,
+          "modeldata": {}
+         },
+         {
+          "modelid": "model2",
+          "score": 0.42,
+          "modeldata": {}
+         },
+         {
+          "modelid": "aggModel",
+          "score": 0.2,
+          "modeldata": {}
+         }
+        ],
+        "tags": [
+         {
+          "tag": "codes",
+          "values": [
+           "Dodgy"
+          ]
+         }
+        ],
+        "rules": [
+         {
+          "ruleid": "rule1",
+          "score": 0.2
+         },
+         {
+          "ruleid": "rule2",
+          "score": 0.4
+         }
+        ]
+       },
+       "aggregateScore": 0.3,
+       "matchedBound": 0.1,
+       "outputTags": [
+        {
+         "tag": "codes",
+         "values": [
+          "LowValueTrans"
+         ]
+        }
+       ],
+       "suppressedTags": [
+        {
+         "tag": "otherTag",
+         "values": [
+          "t3",
+          "t4"
+         ]
+        }
+       ],
+       "alert": true
+      },
+      {
+       "aggregatorId": "agg2",
+       "scores": {},
+       "aggregateScore": 0.2,
+       "matchedBound": 0.4,
+       "alert": true
+      }
+     ]
+    },
+    {
+     "type": "analytical",
+     "id": "acg1\t",
+     "triggeredRules": [
+      "rule1",
+      "rule3"
+     ],
+     "aggregators": [
+      {
+       "aggregatorId": "agg1",
+       "scores": {
+        "models": [
+         {
+          "modelid": "model1",
+          "score": 0.51,
+          "modeldata": {}
+         },
+         {
+          "modelid": "model2",
+          "score": 0.42,
+          "modeldata": {}
+         },
+         {
+          "modelid": "aggModel",
+          "score": 0.2,
+          "modeldata": {}
+         }
+        ],
+        "tags": [
+         {
+          "tag": "codes",
+          "values": [
+           "Dodgy"
+          ]
+         }
+        ],
+        "rules": [
+         {
+          "ruleid": "rule1",
+          "score": 0.2
+         },
+         {
+          "ruleid": "rule2",
+          "score": 0.4
+         }
+        ]
+       },
+       "aggregateScore": 0.3,
+       "matchedBound": 0.1,
+       "outputTags": [
+        {
+         "tag": "codes",
+         "values": [
+          "LowValueTrans"
+         ]
+        }
+       ],
+       "suppressedTags": [
+        {
+         "tag": "otherTag",
+         "values": [
+          "t3",
+          "t4"
+         ]
+        }
+       ],
+       "alert": true
+      },
+      {
+       "aggregatorId": "agg2",
+       "scores": {},
+       "aggregateScore": 0.2,
+       "matchedBound": 0.4,
+       "alert": true
+      }
+     ]
+    },
+    {
+     "type": "analytical",
+     "id": "acg2",
+     "triggeredRules": [
+      "rule1",
+      "rule3"
+     ]
+    },
+    {
+     "type": "tenant",
+     "id": "tenant10",
+     "triggeredRules": [
+      "rule2",
+      "rule3"
+     ]
+    }
+   ]
+  },
+  {
+   "entityType": "consumer",
+   "entityId": "consumer1",
+   "overallScore": {}
+  }
+ ],
+ "jsonVersion": 4,
+ "originatingEvent": {
+  "accountAgentId": "4",
+  "accountEntityId": "1",
+  "accountId": "6552676145622515",
+  "amount": {
+   "basecurrency": "zar",
+   "basevalu": "87296961.79",
+   "currency": "zar",
+   "value": "87296961.79"
+  },
+  "counterpartyEntityId": "5806",
+  "counterpartyId": "16861",
+  "counterpartyName": {
+   "ssn": "266204922",
+   "firstname": "Mellie",
+   "lastname": "Sauer",
+   "gender": "",
+   "address": {
+    "Streetname": "",
+    "City": "",
+    "State": "",
+    "Zip": "",
+    "Country": "",
+    "Latitude": 0,
+    "Longitude": 0
+   },
+   "contact": {
+    "email": "",
+    "phone": ""
+   },
+   "ccard": {
+    "type": "",
+    "number": 0,
+    "exp": "",
+    "cvv": ""
+   },
+   "job": {
+    "company": "",
+    "title": "",
+    "descriptor": "",
+    "level": ""
+   },
+   "created_date": "2023-02-21T10:56:07"
+  },
+  "customerEntityId": "customerEntityId_1",
+  "customerId": "customerId_1",
+  "direction": "Outbound",
+  "eventId": "2720992470810719",
+  "eventTime": "2023-02-21T10:56:07",
+  "eventType": "paymentRT",
+  "fromId": "2221009342266873",
+  "instructedAgentId": "4868",
+  "instructingAgentId": "5243",
+  "msgStatus": "msgStatus_1",
+  "msgType": "msgType_1",
+  "numberOfTransactions": "68",
+  "paymentFrequency": "6",
+  "paymentMethod": "paymentMethod_1",
+  "schemaVersion": "1",
+  "serviceLevelCode": "serviceLevelCode_1",
+  "settlementClearingSystemCode": "settlementClearingSystemCode_1",
+  "settlementDate": "2023-02-21",
+  "settlementMethod": "samos",
+  "tenantId": [
+   "Ubank"
+  ],
+  "toId": "6549504322904380",
+  "transactionId": "17454e75-a57d-4664-8e94-4747b20bc809",
+  "transactionType": "RTC"
+ },
+ "outputTime": "2023-02-21T10:56:07",
+ "processorId": "proc",
+ "versions": {
+  "modelgraph": 4,
+  "configGroups": [
+   {
+    "type": "global",
+    "version": "1"
+   },
+   {
+    "type": "analytical",
+    "version": "3",
+    "id": "acg1"
+   },
+   {
+    "type": "analytical",
+    "version": "2",
+    "id": "acg2"
+   },
+   {
+    "type": "tenant",
+    "version": "0",
+    "id": "tenant10"
+   }
+  ]
+ }
+}
