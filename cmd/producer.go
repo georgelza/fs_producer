@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -37,9 +38,50 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	glog "google.golang.org/grpc/grpclog"
 
+	// Prometheus
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	// My Types/Structs/functions
 	"cmd/seed"
 	"cmd/types"
+)
+
+var sql_duration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "fs_sql_duration_seconds",
+	Help:    "Histogram for the duration in seconds.",
+	Buckets: []float64{1, 2, 5, 6, 10},
+},
+	[]string{"endpoint"},
+)
+
+var rec_duration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "fs_record_duration_seconds",
+	Help:    "Histogram for the duration in seconds for entire record.",
+	Buckets: []float64{1, 2, 5, 6, 10},
+},
+	[]string{"endpoint"},
+)
+
+var api_duration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	Name:    "fs_api_duration_seconds",
+	Help:    "Histogram for the duration in seconds for api call.",
+	Buckets: []float64{1, 2, 5, 6, 10},
+},
+	[]string{"endpoint"},
+)
+
+var requestsProcessed = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "fs_etl_operations_count",
+	Help: "The total number of processed records",
+})
+
+var info = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "txn_count",
+	Help: "Information about the batch size",
+},
+	[]string{"batch"},
 )
 
 // Private Structs
@@ -81,7 +123,7 @@ func init() {
 	grpcLog.Infoln("#")
 	grpcLog.Infoln("#   File      : producer.go")
 	grpcLog.Infoln("#")
-	grpcLog.Infoln("#	 Comment   : Fake Kafka Producer - Applab Example")
+	grpcLog.Infoln("#	Comment   : Fake Kafka Producer - Applab Example")
 	grpcLog.Infoln("#")
 	grpcLog.Infoln("#   By        : George Leonard (georgelza@gmail.com)")
 	grpcLog.Infoln("#")
@@ -416,7 +458,35 @@ func contructPaymentNrt() (t_PaymentNrt map[string]interface{}, cTenant string, 
 	return t_PaymentNrt, cTenant, cMerchant
 }
 
-func main() {
+// Query database and get the record set to work with
+func fetchEFTRecords() (records []string, count int) {
+
+	grpcLog.Info("**** Quering Backend database ****")
+
+	////////////////////////////////
+	// start a timer
+	sTime := time.Now()
+
+	// Execute a large sql #1 execute
+	rand.Seed(time.Now().UnixNano())
+	n := rand.Intn(10000) // if vGeneral.sleep = 10000, 10 second
+	grpcLog.Info("EFT SQL Sleeping %d Millisecond...", n)
+	time.Sleep(time.Duration(n) * time.Millisecond)
+
+	// post to Prometheus
+	sqlDuration := time.Since(sTime)
+	sql_duration.WithLabelValues("eft_sql_seconds").Observe(sqlDuration.Seconds())
+
+	// Return pointer to recordset and counter of number of records
+	count = 4252345123
+
+	grpcLog.Info("**** Backend dataset retrieved ****")
+
+	return records, count
+
+}
+
+func runEFTLoader() {
 
 	// Initialize the vGeneral struct variable.
 	vGeneral := loadGeneralProps()
@@ -499,12 +569,27 @@ func main() {
 		// For signalling that termination is done from go-routine to main
 		doneChan := make(chan bool)
 
-		vStart := time.Now()
-
 		vFlush := 0
 
-		// we want to skip the first line as it's a header line
-		for count := 0; count < vGeneral.testsize; count++ {
+		// Lets fecth the records that need to be pushed to the fs api end point
+		returnedRecs, todo_count := fetchEFTRecords()
+
+		info.With(prometheus.Labels{"batch": "eft"}).Set(float64(todo_count)) // this will be the recordcount of the records returned by the sql query
+		println(returnedRecs)                                                 // just doing this to prefer a unused error
+
+		// As we're still faking it:
+		todo_count = vGeneral.testsize // this will be recplaced by the value of todo_count from above.
+
+		// now we loop through the results, building a json document based on FS requirements and then post it, for this code I'm posting to
+		// Confluent Kafka topic, but it's easy to change to have it post to a API endpoint.
+
+		// this is to keep record of the total run time
+		vStart := time.Now()
+
+		for count := 0; count < todo_count; count++ {
+
+			// We're going to time every record and push that to prometheus
+			txnStart := time.Now()
 
 			// Eventually we will have a routine here that will not create fake data, but will rather read the data from
 			// a file, do some checks and then publish the JSON payload structured Txn to the topic.
@@ -523,6 +608,8 @@ func main() {
 				}
 				time.Sleep(time.Duration(n) * time.Millisecond)
 			}
+
+			// Build the entire JSON Payload document from the record fetched
 
 			t_PaymentNrt, cTenant, cMerchant := contructPaymentNrt()
 
@@ -730,12 +817,16 @@ func main() {
 
 			if vGeneral.json_to_file == 0 { // write to Kafka Topic
 
-				// This is where we publish message onto the topic... on the cluster
-				// Produce the message
+				// This is where we publish message onto the topic... on the Confluent cluster for now, this will be replaced with
+				// a FS API post call
+
+				apiStart := time.Now()
 				if e := p.Produce(&kafkaMsg, nil); e != nil {
 					grpcLog.Errorln("😢 Darn, there's an error producing the message!", e.Error())
 
 				}
+				//determine the duration of the api call log to prometheus histogram
+				rec_duration.WithLabelValues("nrt_payment_event_api_eft_seconds").Observe(time.Since(apiStart).Seconds())
 
 				//Fush every flush_interval loops
 				if vFlush == vKafka.flush_interval {
@@ -753,8 +844,10 @@ func main() {
 
 			} else { // write the JSON to a file rather
 
+				eventId := t_engineResponse.OriginatingEvent["eventId"]
+
 				// define, contruct the file name
-				loc := fmt.Sprintf("%s/%s.json", vGeneral.output_path, t_PaymentNrt["eventId"])
+				loc := fmt.Sprintf("%s/%s.json", vGeneral.output_path, eventId)
 				if vGeneral.debuglevel > 0 {
 					grpcLog.Infoln(loc)
 
@@ -829,11 +922,18 @@ func main() {
 				close(doneChan)
 			}()
 
+			/////////////////////////////////////////////////////////////////////////////
+			// Prometheus Metrics
+			//
+			// // increment a counter for number of requests processed, we can use this number with time to create a throughput graph
+			requestsProcessed.Inc()
+
+			// // determine the duration and log to prometheus histogram, this is for the entire build of payload and post
+			api_duration.WithLabelValues("nrt_payment_event_complete_eft_seconds").Observe(time.Since(txnStart).Seconds())
+
 			vFlush++
 
 		}
-
-		vEnd := time.Now()
 
 		if vGeneral.debuglevel > 0 {
 			grpcLog.Infoln("")
@@ -857,6 +957,7 @@ func main() {
 		}
 
 		if vGeneral.debuglevel >= 1 {
+			vEnd := time.Now()
 			grpcLog.Infoln("Start      : ", vStart)
 			grpcLog.Infoln("End        : ", vEnd)
 			grpcLog.Infoln("Duration   : ", vEnd.Sub(vStart))
@@ -874,4 +975,18 @@ func main() {
 		defer p.Close()
 
 	}
+
+}
+
+func main() {
+
+	// Initialize Prometheus handler
+	grpcLog.Info("**** Starting ****")
+
+	prometheus.MustRegister(sql_duration, api_duration, rec_duration, info)
+
+	go runEFTLoader()
+
+	http.Handle("/metrics", promhttp.Handler())
+	http.ListenAndServe(":9000", nil)
 }

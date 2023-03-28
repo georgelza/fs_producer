@@ -16,8 +16,8 @@ export OUTPUT_PATH=s3_source
 #export TESTSIZE=10                     # 10
 #export TESTSIZE=1000                   # 1 thou
 #export TESTSIZE=10000                  # 10 thou
-#export TESTSIZE=100000                 # 100 thou
-export TESTSIZE=1000000                # 1 Mil
+export TESTSIZE=100000                 # 100 thou
+#export TESTSIZE=1000000                # 1 Mil
 #export TESTSIZE=10000000               # 10 Mil
 #export TESTSIZE=100000000              # 100 Mil
 #export TESTSIZE=150000000              # 150 Mil
@@ -30,7 +30,7 @@ export SLEEP=2                          # Millisecond based - 1000 = 1 second, 1
 ########################################################################
 # Golang  Examples : https://developer.confluent.io/get-started/go/
 
-export kafka_flushinterval=10000           # This only works when writing to kafka is enabled, aka jsontofile = 0
+export kafka_flushinterval=100           # This only works when writing to kafka is enabled, aka jsontofile = 0
 
 export kafka_bootstrap_port=9092
 #export kafka_topic_name=SNDBX_TFM_paymentnrt

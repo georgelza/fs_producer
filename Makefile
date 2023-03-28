@@ -1,3 +1,5 @@
+.ONESHELL:
+
 BINARY_NAME=fs_er_producer
 
 # docker commands
@@ -23,8 +25,8 @@ build:
 
 run: build 
 # setup environment variables
-	./.exps
-	./.pws
+	@./.exps
+	@./.pws
 
 	./bin/${BINARY_NAME}
 
