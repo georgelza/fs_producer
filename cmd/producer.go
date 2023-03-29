@@ -40,48 +40,11 @@ import (
 
 	// Prometheus
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	// My Types/Structs/functions
 	"cmd/seed"
 	"cmd/types"
-)
-
-var sql_duration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Name:    "fs_sql_duration_seconds",
-	Help:    "Histogram for the duration in seconds.",
-	Buckets: []float64{1, 2, 5, 6, 10},
-},
-	[]string{"endpoint"},
-)
-
-var rec_duration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Name:    "fs_record_duration_seconds",
-	Help:    "Histogram for the duration in seconds for entire record.",
-	Buckets: []float64{1, 2, 5, 6, 10},
-},
-	[]string{"endpoint"},
-)
-
-var api_duration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-	Name:    "fs_api_duration_seconds",
-	Help:    "Histogram for the duration in seconds for api call.",
-	Buckets: []float64{1, 2, 5, 6, 10},
-},
-	[]string{"endpoint"},
-)
-
-var requestsProcessed = promauto.NewCounter(prometheus.CounterOpts{
-	Name: "fs_etl_operations_count",
-	Help: "The total number of processed records",
-})
-
-var info = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-	Name: "txn_count",
-	Help: "Information about the batch size",
-},
-	[]string{"batch"},
 )
 
 // Private Structs
@@ -110,8 +73,18 @@ type tp_kafka struct {
 	flush_interval    int
 }
 
+type metrics struct {
+	info          *prometheus.GaugeVec
+	req_processed *prometheus.CounterVec
+	sql_duration  *prometheus.HistogramVec
+	rec_duration  *prometheus.HistogramVec
+	api_duration  *prometheus.HistogramVec
+}
+
 var (
 	grpcLog glog.LoggerV2
+	reg     = prometheus.NewRegistry()
+	m       = NewMetrics(reg)
 )
 
 func init() {
@@ -133,6 +106,47 @@ func init() {
 	grpcLog.Infoln("")
 	grpcLog.Infoln("")
 
+}
+
+func NewMetrics(reg prometheus.Registerer) *metrics {
+
+	m := &metrics{
+		info: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "txn_count",
+			Help: "Target amount for completed requests",
+		}, []string{"batch"}),
+
+		req_processed: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "fs_etl_operations_count",
+			Help: "Number of completed requests.",
+		}, []string{"batch"}),
+
+		sql_duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name: "fs_sql_duration_seconds",
+			Help: "Duration of the sql requests",
+			// 4 times larger apdex status
+			// Buckets: prometheus.ExponentialBuckets(0.1, 1.5, 5),
+			// Buckets: prometheus.LinearBuckets(0.1, 5, 5),
+			Buckets: []float64{0.1, 0.15, 0.2, 0.25, 0.3},
+		}, []string{"batch"}),
+
+		rec_duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name: "fs_etl_operations_seconds",
+			Help: "Duration of the entire requests",
+
+			Buckets: []float64{0.1, 0.15, 0.2, 0.25, 0.3},
+		}, []string{"batch"}),
+
+		api_duration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "fs_api_duration_seconds",
+			Help:    "Duration of the api requests",
+			Buckets: []float64{0.1, 0.15, 0.2, 0.25, 0.3},
+		}, []string{"batch"}),
+	}
+
+	reg.MustRegister(m.info, m.req_processed, m.sql_duration, m.rec_duration, m.api_duration)
+
+	return m
 }
 
 func CreateTopic(props tp_kafka) {
@@ -470,12 +484,11 @@ func fetchEFTRecords() (records []string, count int) {
 	// Execute a large sql #1 execute
 	rand.Seed(time.Now().UnixNano())
 	n := rand.Intn(10000) // if vGeneral.sleep = 10000, 10 second
-	grpcLog.Info("EFT SQL Sleeping %d Millisecond...", n)
+	grpcLog.Info("EFT SQL Sleeping Millisecond - Simulating long database fetch...", n)
 	time.Sleep(time.Duration(n) * time.Millisecond)
 
 	// post to Prometheus
-	sqlDuration := time.Since(sTime)
-	sql_duration.WithLabelValues("eft_sql_seconds").Observe(sqlDuration.Seconds())
+	m.sql_duration.WithLabelValues("eft").Observe(time.Since(sTime).Seconds())
 
 	// Return pointer to recordset and counter of number of records
 	count = 4252345123
@@ -571,11 +584,12 @@ func runEFTLoader() {
 
 		vFlush := 0
 
+		////////////////////////////////////////////////////////////////////////
 		// Lets fecth the records that need to be pushed to the fs api end point
 		returnedRecs, todo_count := fetchEFTRecords()
 
-		info.With(prometheus.Labels{"batch": "eft"}).Set(float64(todo_count)) // this will be the recordcount of the records returned by the sql query
-		println(returnedRecs)                                                 // just doing this to prefer a unused error
+		m.info.With(prometheus.Labels{"batch": "eft"}).Set(float64(todo_count)) // this will be the recordcount of the records returned by the sql query
+		println(returnedRecs)                                                   // just doing this to prefer a unused error
 
 		// As we're still faking it:
 		todo_count = vGeneral.testsize // this will be recplaced by the value of todo_count from above.
@@ -817,16 +831,16 @@ func runEFTLoader() {
 
 			if vGeneral.json_to_file == 0 { // write to Kafka Topic
 
-				// This is where we publish message onto the topic... on the Confluent cluster for now, this will be replaced with
-				// a FS API post call
+				// This is where we publish message onto the topic... on the Confluent cluster for now,
+				// this will be replaced with a FS API post call
 
-				apiStart := time.Now()
+				apiStart := time.Now() // time the api call
 				if e := p.Produce(&kafkaMsg, nil); e != nil {
 					grpcLog.Errorln("😢 Darn, there's an error producing the message!", e.Error())
 
 				}
 				//determine the duration of the api call log to prometheus histogram
-				rec_duration.WithLabelValues("nrt_payment_event_api_eft_seconds").Observe(time.Since(apiStart).Seconds())
+				m.rec_duration.WithLabelValues("nrt_eft").Observe(time.Since(apiStart).Seconds())
 
 				//Fush every flush_interval loops
 				if vFlush == vKafka.flush_interval {
@@ -926,10 +940,10 @@ func runEFTLoader() {
 			// Prometheus Metrics
 			//
 			// // increment a counter for number of requests processed, we can use this number with time to create a throughput graph
-			requestsProcessed.Inc()
+			m.req_processed.WithLabelValues("nrt_eft").Inc()
 
 			// // determine the duration and log to prometheus histogram, this is for the entire build of payload and post
-			api_duration.WithLabelValues("nrt_payment_event_complete_eft_seconds").Observe(time.Since(txnStart).Seconds())
+			m.api_duration.WithLabelValues("nrt_eft").Observe(time.Since(txnStart).Seconds())
 
 			vFlush++
 
@@ -975,18 +989,23 @@ func runEFTLoader() {
 		defer p.Close()
 
 	}
+	os.Exit(0)
 
 }
 
 func main() {
 
+	pMux := http.NewServeMux()
+	promHandler := promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
+	pMux.Handle("/metrics", promHandler)
+
 	// Initialize Prometheus handler
 	grpcLog.Info("**** Starting ****")
 
-	prometheus.MustRegister(sql_duration, api_duration, rec_duration, info)
-
 	go runEFTLoader()
 
-	http.Handle("/metrics", promhttp.Handler())
-	http.ListenAndServe(":9000", nil)
+	go func() {
+		fmt.Println(http.ListenAndServe(":9000", pMux))
+	}()
+	select {}
 }
